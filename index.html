@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<title>PP Console</title>
+<style>
+body{margin:0;background:#0b0c10;color:#eaf0f1;font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+header{padding:12px 16px;border-bottom:1px solid #1f2833;position:sticky;top:0;background:#0b0c10}
+h1{margin:0;font-size:18px}
+main{padding:16px;overflow:auto}
+footer{padding:10px;border-top:1px solid #1f2833}
+.row{display:flex;gap:8px;align-items:center}
+textarea{flex:1;min-height:100px;border:1px solid #1f2833;background:#0e1116;color:#eaf0f1;border-radius:8px;padding:10px 12px}
+button{border:1px solid #1f2833;background:#111820;color:#eaf0f1;border-radius:8px;padding:10px 12px}
+#log{margin-top:10px;white-space:pre-wrap;border:1px solid #1f2833;padding:10px;border-radius:8px;background:#0e1116;max-height:45vh;overflow:auto}
+.small{opacity:.7}
+</style>
+</head><body>
+<div class="wrap">
+<header><h1>PP Console</h1></header>
+<main>
+  <div class="row">
+    <textarea id="input" placeholder="Describe the outcome. The system will plan → confirm (if needed) → execute → audit."></textarea>
+    <button id="run">Execute</button>
+    <button id="notify">Enable Push</button>
+  </div>
+  <div id="log"></div>
+</main>
+<footer><small class="small">Add to Home Screen for native feel. Approvals arrive via iOS push.</small></footer>
+</div>
+<script>
+async function regSW(){ try{ const reg = await navigator.serviceWorker.register('/sw.js'); return reg }catch(e){ console.log(e) } }
+async function enablePush(){
+  const reg = await regSW()
+  if (!reg || !('pushManager' in reg)) return alert('Push not supported')
+  const key = await (await fetch('/push/vapid')).text().catch(()=>null)
+}
+const logEl = document.getElementById('log')
+function log(s){ logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight }
+document.getElementById('run').onclick = async () => {
+  const input = document.getElementById('input').value.trim()
+  if (!input) return
+  log('> ' + input)
+  const res = await fetch('/execute', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ input }) })
+  const j = await res.json()
+  log(JSON.stringify(j, null, 2))
+  if (j.status==='NEED_CONFIRMATION'){
+    log('Waiting for approval. You may also approve from notification.')
+  }
+}
+document.getElementById('notify').onclick = async () => {
+  const reg = await regSW()
+  const resp = await fetch('/push/public')
+  const vapidPublicKey = await resp.text()
+  const converted = urlBase64ToUint8Array(vapidPublicKey)
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: converted })
+  await fetch('/push/subscribe', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(sub) })
+  alert('Push enabled')
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i) }
+  return outputArray;
+}
+</script>
+</body></html>
