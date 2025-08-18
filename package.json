@@ -14,7 +14,6 @@
     "web-push": "^3.6.6"
   },
   "scripts": {
-    "start": "node index.js",
-    "migrate": "node db/migrate.js"
-  }
+  "start": "node index.js",
+  "push": "git add -A && git commit -m \"auto: save from Replit\" || true && git push origin pp-console"
 }
